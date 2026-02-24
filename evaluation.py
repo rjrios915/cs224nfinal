@@ -32,6 +32,7 @@ def model_eval_paraphrase(dataloader, model, device):
 
     logits = model(b_ids, b_mask).cpu().numpy()
     preds = np.argmax(logits, axis=1).flatten()
+    preds = np.where(preds == 1, 8505, 3919)
 
     y_true.extend(labels)
     y_pred.extend(preds)
@@ -55,7 +56,7 @@ def model_test_paraphrase(dataloader, model, device):
 
     logits = model(b_ids, b_mask).cpu().numpy()
     preds = np.argmax(logits, axis=1).flatten()
-
+    preds = np.where(preds == 1, 8505, 3919)
     y_pred.extend(preds)
     sent_ids.extend(b_sent_ids)
 

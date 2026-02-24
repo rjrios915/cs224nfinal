@@ -13,6 +13,8 @@ trains and evaluates your ParaphraseGPT model and writes the required submission
 
 import argparse
 import random
+import os
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 import torch
 
 import numpy as np
@@ -31,6 +33,7 @@ from evaluation import model_eval_paraphrase, model_test_paraphrase
 from models.gpt2 import GPT2Model
 
 from optimizer import AdamW
+from shampoo import Shampoo
 
 TQDM_DISABLE = False
 
@@ -55,6 +58,8 @@ class ParaphraseGPT(nn.Module):
 
     # By default, fine-tune the full model.
     for param in self.gpt.parameters():
+      param.requires_grad = False
+    for param in self.paraphrase_detection_head.parameters():
       param.requires_grad = True
 
   def forward(self, input_ids, attention_mask):
@@ -71,9 +76,10 @@ class ParaphraseGPT(nn.Module):
     """
 
     'Takes a batch of sentences and produces embeddings for them.'
-    ### YOUR CODE HERE
-    raise NotImplementedError
-
+    outputs = self.gpt(input_ids, attention_mask)
+    last_token = outputs['last_token']
+    logits = self.paraphrase_detection_head(last_token)
+    return logits
 
 
 def save_model(model, optimizer, args, filepath):
@@ -92,7 +98,10 @@ def save_model(model, optimizer, args, filepath):
 
 def train(args):
   """Train GPT-2 for paraphrase detection on the Quora dataset."""
-  device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+  if torch.backends.mps.is_available():
+      device = torch.device("mps")
+  else:
+      device = torch.device("cpu")
   # Create the data and its corresponding datasets and dataloader.
   para_train_data = load_paraphrase_data(args.para_train)
   para_dev_data = load_paraphrase_data(args.para_dev)
@@ -110,7 +119,8 @@ def train(args):
   model = model.to(device)
 
   lr = args.lr
-  optimizer = AdamW(model.parameters(), lr=lr, weight_decay=0.)
+  # optimizer = AdamW(model.parameters(), lr=lr, weight_decay=0.)
+  optimizer = Shampoo(model.parameters(), lr=lr, weight_decay=0.)
   best_dev_acc = 0
 
   # Run for the specified number of epochs.
@@ -129,6 +139,7 @@ def train(args):
       optimizer.zero_grad()
       logits = model(b_ids, b_mask)
       preds = torch.argmax(logits, dim=1)
+      labels = torch.where(labels == 8505, torch.tensor(1, device=device), torch.tensor(0, device=device))
       loss = F.cross_entropy(logits, labels, reduction='mean')
       loss.backward()
       optimizer.step()
@@ -150,8 +161,12 @@ def train(args):
 @torch.no_grad()
 def test(args):
   """Evaluate your model on the dev and test datasets; save the predictions to disk."""
-  device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
-  saved = torch.load(args.filepath)
+  # device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+  if torch.backends.mps.is_available():
+      device = torch.device("mps")
+  else:
+      device = torch.device("cpu")
+  saved = torch.load(args.filepath, weights_only=False)
 
   model = ParaphraseGPT(saved['args'])
   model.load_state_dict(saved['model'])

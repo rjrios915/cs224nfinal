@@ -55,17 +55,16 @@ class GPT2SentimentClassifier(torch.nn.Module):
 
     ### TODO: Create any instance variables you need to classify the sentiment of BERT embeddings.
     ### YOUR CODE HERE
-    raise NotImplementedError
+    self.sentiment_head = torch.nn.Linear(config.hidden_size, config.num_labels)
 
 
   def forward(self, input_ids, attention_mask):
     '''Takes a batch of sentences and returns logits for sentiment classes'''
 
-    ### TODO: The final GPT contextualized embedding is the hidden state of the last token.
-    ###       HINT: You should consider what is an appropriate return value given that
-    ###       the training loop currently uses F.cross_entropy as the loss function.
-    ### YOUR CODE HERE
-    raise NotImplementedError
+    outputs = self.gpt(input_ids, attention_mask)
+    last_token = outputs['last_token']
+    logits = self.sentiment_head(last_token)
+    return logits
 
 
 
@@ -241,7 +240,13 @@ def save_model(model, optimizer, args, config, filepath):
 
 
 def train(args):
-  device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+  # device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+
+  if torch.backends.mps.is_available():
+      device = torch.device("mps")
+  else:
+      device = torch.device("cpu")
+
   # Create the data and its corresponding datasets and dataloader.
   train_data, num_labels = load_data(args.train, 'train')
   dev_data = load_data(args.dev, 'valid')

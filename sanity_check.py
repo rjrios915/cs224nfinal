@@ -16,14 +16,16 @@ def test_gpt2(model_size='gpt2'):
   # Load both the OpenAI and your own model.
   openai_model = OpenAIGPT2Model.from_pretrained(model_size)
   gpt = GPT2Model.from_pretrained(model=model_size, **model_size_to_params(model_size))
-
+  gpt.eval()
   outputs = gpt(sent_ids, att_mask)
   openai_outputs = openai_model(input_ids=sent_ids, attention_mask=att_mask, output_hidden_states=True).hidden_states[-1]
-
   att_mask = att_mask.unsqueeze(-1)
   outputs['last_hidden_state'] = outputs['last_hidden_state'] * att_mask
   openai_outputs *= att_mask
 
+  pos_ids = torch.arange(sent_ids.shape[1]).unsqueeze(0)
+  openai_word = openai_model.wte(sent_ids)
+  openai_pos = openai_model.wpe(pos_ids)
   assert torch.allclose(outputs['last_hidden_state'], openai_outputs, atol=1e-1, rtol=1e-2)
 
   print("Your GPT2 implementation is correct!")
