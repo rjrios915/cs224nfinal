@@ -55,11 +55,14 @@ class ParaphraseGPT(nn.Module):
     super().__init__()
     self.gpt = GPT2Model.from_pretrained(model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads)
     self.paraphrase_detection_head = nn.Linear(args.d, 2)  # Paraphrase detection has two outputs: 1 (yes) or 0 (no).
-
+    
+    print(f"Loaded model to test from {args.filepath}")
     # By default, fine-tune the full model.
+    # for param in self.gpt.parameters():
+    #   param.requires_grad = False
+    # for param in self.paraphrase_detection_head.parameters():
+    #   param.requires_grad = True
     for param in self.gpt.parameters():
-      param.requires_grad = False
-    for param in self.paraphrase_detection_head.parameters():
       param.requires_grad = True
 
   def forward(self, input_ids, attention_mask):
@@ -99,6 +102,16 @@ def save_model(model, optimizer, args, filepath):
 def train(args):
   """Train GPT-2 for paraphrase detection on the Quora dataset."""
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+  saved = torch.load(args.filepath, weights_only=False)
+
+  model = ParaphraseGPT(saved['args'])
+  model.load_state_dict(saved['model'])
+  model = model.to(device)
+
+  # args = add_arguments(args)
+  # model = ParaphraseGPT(args)
+  # model = model.to(device)
+
   # Create the data and its corresponding datasets and dataloader.
   para_train_data = load_paraphrase_data(args.para_train)
   para_dev_data = load_paraphrase_data(args.para_dev)
@@ -111,9 +124,6 @@ def train(args):
   para_dev_dataloader = DataLoader(para_dev_data, shuffle=False, batch_size=args.batch_size,
                                    collate_fn=para_dev_data.collate_fn)
 
-  args = add_arguments(args)
-  model = ParaphraseGPT(args)
-  model = model.to(device)
 
   lr = args.lr
   # optimizer = AdamW(model.parameters(), lr=lr, weight_decay=0.)
@@ -122,6 +132,7 @@ def train(args):
 
   # Run for the specified number of epochs.
   for epoch in range(args.epochs):
+    # print("Epoch wow")
     model.train()
     train_loss = 0
     num_batches = 0
@@ -138,6 +149,7 @@ def train(args):
       preds = torch.argmax(logits, dim=1)
       labels = torch.where(labels == 8505, torch.tensor(1, device=device), torch.tensor(0, device=device))
       loss = F.cross_entropy(logits, labels, reduction='mean')
+      # print(logits, labels, loss)
       loss.backward()
       optimizer.step()
 
@@ -207,11 +219,10 @@ def get_args():
   parser.add_argument("--use_gpu", action='store_true')
 
   parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
-  parser.add_argument("--lr", type=float, help="learning rate", default=1e-5)
+  parser.add_argument("--lr", type=float, help="learning rate", default=1e-4)
   parser.add_argument("--model_size", type=str,
                       help="The model size as specified on hugging face. DO NOT use the xl model.",
                       choices=['gpt2', 'gpt2-medium', 'gpt2-large'], default='gpt2')
-
   args = parser.parse_args()
   return args
 
