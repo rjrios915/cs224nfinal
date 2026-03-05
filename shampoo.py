@@ -6,23 +6,24 @@ def _inv_nth_root(mat: torch.Tensor, n: int, eps: float) -> torch.Tensor:
     """Compute (mat + eps I)^(-1/n) via eigh, robust to numerical issues."""
     d = mat.shape[0]
     mat = mat.contiguous()
-    mat = 0.5 * (mat + mat.T)  # enforce symmetry
+    mat = 0.5 * (mat + mat.T)
 
     # bail if non-finite
-    if not torch.isfinite(mat).all():
-        return torch.eye(d, device=mat.device, dtype=mat.dtype)
+    # if not torch.isfinite(mat).all():
+    #     return torch.eye(d, device=mat.device, dtype=mat.dtype)
 
     eye = torch.eye(d, device=mat.device, dtype=mat.dtype)
     mat = mat + eps * eye
+    e_vals, e_vecs = torch.linalg.eigh(mat)
 
-    try:
-        e_vals, e_vecs = torch.linalg.eigh(mat)
-    except Exception:
-        # CPU float64 fallback
-        mat_cpu = mat.detach().to("cpu", dtype=torch.float64).contiguous()
-        e_vals, e_vecs = torch.linalg.eigh(mat_cpu)
-        e_vals = e_vals.to(device=mat.device, dtype=mat.dtype)
-        e_vecs = e_vecs.to(device=mat.device, dtype=mat.dtype)
+    # try:
+    #     e_vals, e_vecs = torch.linalg.eigh(mat)
+    # except Exception:
+    #     # CPU float64 fallback
+    #     mat_cpu = mat.detach().to("cpu", dtype=torch.float32).contiguous()
+    #     e_vals, e_vecs = torch.linalg.eigh(mat_cpu)
+    #     e_vals = e_vals.to(device=mat.device, dtype=mat.dtype)
+    #     e_vecs = e_vecs.to(device=mat.device, dtype=mat.dtype)
 
     e_vals = torch.clamp(e_vals, min=eps)
     inv_root = e_vals.pow(-1.0 / n)

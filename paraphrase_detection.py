@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from matplotlib import pyplot as plt
 
 from datasets import (
   ParaphraseDetectionDataset,
@@ -102,19 +103,22 @@ def save_model(model, optimizer, args, filepath):
 def train(args):
   """Train GPT-2 for paraphrase detection on the Quora dataset."""
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
-  saved = torch.load(args.filepath, weights_only=False)
+  # device = torch.device("mps")
+  # saved = torch.load(args.filepath, weights_only=False)
 
-  model = ParaphraseGPT(saved['args'])
-  model.load_state_dict(saved['model'])
-  model = model.to(device)
-
-  # args = add_arguments(args)
-  # model = ParaphraseGPT(args)
+  # model = ParaphraseGPT(saved['args'])
+  # model.load_state_dict(saved['model'])
   # model = model.to(device)
+
+  args = add_arguments(args)
+  model = ParaphraseGPT(args)
+  model = model.to(device)
 
   # Create the data and its corresponding datasets and dataloader.
   para_train_data = load_paraphrase_data(args.para_train)
+  para_train_data = random.sample(para_train_data, 2)
   para_dev_data = load_paraphrase_data(args.para_dev)
+  para_dev_data = random.sample(para_dev_data, 2)
 
   para_train_data = ParaphraseDetectionDataset(para_train_data, args)
   para_dev_data = ParaphraseDetectionDataset(para_dev_data, args)
@@ -126,10 +130,15 @@ def train(args):
 
 
   lr = args.lr
-  # optimizer = AdamW(model.parameters(), lr=lr, weight_decay=0.)
-  optimizer = Shampoo(model.parameters(), lr=lr, weight_decay=0.)
+  if args.optimizer == "adamw":
+    optimizer = AdamW(model.parameters(), lr=lr, weight_decay=0.)
+  elif args.optimizer == "shampoo":
+    optimizer = Shampoo(model.parameters(), lr=lr, weight_decay=0.)
+  else:
+    raise ValueError(f"Invalid optimizer: {args.optimizer}")
   best_dev_acc = 0
-
+  dev_acc_list = []
+  loss_list = []
   # Run for the specified number of epochs.
   for epoch in range(args.epochs):
     # print("Epoch wow")
@@ -163,9 +172,18 @@ def train(args):
     if dev_acc > best_dev_acc:
       best_dev_acc = dev_acc
       save_model(model, optimizer, args, args.filepath)
+    dev_acc_list.append(dev_acc)
+    loss_list.append(train_loss)
 
     print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, dev acc :: {dev_acc :.3f}")
-
+  with open(f'results/{args.optimizer}-{args.lr}.txt', 'w') as f:
+    f.write(f"dev acc list: {dev_acc_list}\n")
+    f.write(f"loss list: {loss_list}\n")
+  plt.plot(dev_acc_list, label='dev acc')
+  plt.plot(loss_list, label='loss')
+  plt.legend()
+  plt.show()
+  plt.savefig(f'results/{args.optimizer}-{args.lr}.png')
 
 @torch.no_grad()
 def test(args):
@@ -213,12 +231,13 @@ def get_args():
   parser.add_argument("--para_test", type=str, default="data/quora-test-student.csv")
   parser.add_argument("--para_dev_out", type=str, default="predictions/para-dev-output.csv")
   parser.add_argument("--para_test_out", type=str, default="predictions/para-test-output.csv")
+  parser.add_argument("--optimizer", type=str, default="adamw")
 
   parser.add_argument("--seed", type=int, default=11711)
   parser.add_argument("--epochs", type=int, default=10)
   parser.add_argument("--use_gpu", action='store_true')
 
-  parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
+  parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=128)
   parser.add_argument("--lr", type=float, help="learning rate", default=1e-4)
   parser.add_argument("--model_size", type=str,
                       help="The model size as specified on hugging face. DO NOT use the xl model.",
@@ -247,8 +266,16 @@ def add_arguments(args):
 
 
 if __name__ == "__main__":
-  args = get_args()
-  args.filepath = f'{args.epochs}-{args.lr}-paraphrase.pt'  # Save path.
-  seed_everything(args.seed)  # Fix the seed for reproducibility.
-  train(args)
-  test(args)
+  for optimizer in ["adamw", "shampoo"]:
+    for lr in [0.01, 0.001, 0.0001, 0.00001]:
+      args = get_args()
+      args.optimizer = optimizer
+      args.lr = lr
+      args.filepath = f'{args.epochs}-{args.lr}-{optimizer}.pt'  # Save path.
+      seed_everything(args.seed)  # Fix the seed for reproducibility.
+      train(args)
+      test(args)
+
+os.system("git add .")
+os.system('git commit -m "Auto commit"')
+os.system("git push")
