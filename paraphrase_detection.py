@@ -182,7 +182,6 @@ def train(args):
   plt.plot(dev_acc_list, label='dev acc')
   plt.plot(loss_list, label='loss')
   plt.legend()
-  plt.show()
   plt.savefig(f'results/{args.optimizer}-{args.lr}.png')
 
 @torch.no_grad()
@@ -271,7 +270,7 @@ if __name__ == "__main__":
       args = get_args()
       args.optimizer = optimizer
       args.lr = lr
-      args.filepath = f'{args.epochs}-{args.lr}-{optimizer}.pt'  # Save path.
+      args.filepath = f'trained_models/{args.epochs}-{args.lr}-{optimizer}.pt'  # Save path.
       seed_everything(args.seed)  # Fix the seed for reproducibility.
       train(args)
       test(args)
